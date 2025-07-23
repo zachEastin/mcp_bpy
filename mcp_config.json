@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "bpy-mcp": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "bpy_mcp.server"],
+      "cwd": "t:\\Coding_Projects\\mcp_bpy",
+      "env": {}
+    }
+  }
+}
