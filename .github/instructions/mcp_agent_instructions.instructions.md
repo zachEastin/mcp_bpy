@@ -2,6 +2,8 @@
 
 This document contains critical information about working with this codebase. Follow these guidelines precisely.
 
+when running a command in the terminal assume its Powershell and format the command accordingly.
+
 ## Core Development Rules
 
 1. Package Management

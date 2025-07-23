@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../bpy_mcp_addon"
+		}
+	],
+	"settings": {
+		"powershell.cwd": "mcp_bpy"
+	}
+}
