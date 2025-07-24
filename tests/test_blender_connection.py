@@ -7,6 +7,8 @@ import socket
 import struct
 from typing import Any
 
+import pytest
+
 
 async def send_message(writer: asyncio.StreamWriter, message: dict[str, Any]) -> None:
     """Send a JSON message over the TCP connection."""
@@ -45,6 +47,7 @@ def check_port_availability(host: str, port: int) -> bool:
         return False
 
 
+@pytest.mark.asyncio
 async def test_blender_connection() -> None:
     """Test the connection to Blender."""
     # Configuration
@@ -70,9 +73,7 @@ async def test_blender_connection() -> None:
     # Step 2: Try to establish TCP connection
     print("\nStep 2: Attempting TCP connection...")
     try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=10
-        )
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=10)
         print("✅ TCP connection established successfully")
     except TimeoutError:
         print("❌ Connection timeout - Blender may not be responding")
@@ -86,15 +87,15 @@ async def test_blender_connection() -> None:
     try:
         auth_message = {"id": "test_auth", "token": token}
         await send_message(writer, auth_message)
-        
+
         # Wait for response with timeout
         response = await asyncio.wait_for(receive_message(reader), timeout=10)
-        
+
         if response.get("authenticated"):
             print("✅ Authentication successful")
         else:
             print(f"❌ Authentication failed: {response}")
-            
+
     except TimeoutError:
         print("❌ Authentication timeout - no response from Blender")
     except Exception as e:
@@ -108,18 +109,18 @@ import bpy
 print("Blender version:", bpy.app.version_string)
 print("Current scene:", bpy.context.scene.name)
 """
-        
+
         exec_message = {"id": "test_exec", "code": test_code, "stream": False}
         await send_message(writer, exec_message)
-        
+
         response = await asyncio.wait_for(receive_message(reader), timeout=15)
-        
+
         if response.get("error"):
             print(f"❌ Code execution error: {response['error']}")
         else:
             print("✅ Code execution successful")
             print(f"Output: {response.get('output', 'No output')}")
-            
+
     except TimeoutError:
         print("❌ Code execution timeout")
     except Exception as e:
@@ -140,20 +141,20 @@ print("Current scene:", bpy.context.scene.name)
 def check_environment():
     """Check environment variables and configuration."""
     print("=== Environment Check ===")
-    
+
     # Check environment variables
     port = os.getenv("BLENDER_MCP_PORT", "4777")
     token = os.getenv("BLENDER_MCP_TOKEN", "test-token-123")
-    
+
     print(f"BLENDER_MCP_PORT: {port}")
     print(f"BLENDER_MCP_TOKEN: {token}")
-    
+
     # Check if variables are defaults
     if port == "4777":
         print("⚠️  Using default port (4777)")
     if token == "test-token-123":
         print("⚠️  Using default token")
-    
+
     print()
 
 
@@ -175,14 +176,14 @@ def print_troubleshooting_tips():
 def main():
     """Main test function."""
     check_environment()
-    
+
     try:
         asyncio.run(test_blender_connection())
     except KeyboardInterrupt:
         print("\n❌ Test interrupted by user")
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
-    
+
     print_troubleshooting_tips()
 
 

@@ -53,6 +53,7 @@ dependencies = [
     "mcp[cli]>=1.12.1",
     "pyright>=1.1.403",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
     "ruff>=0.12.4",
     "typer>=0.16.0",
 ]

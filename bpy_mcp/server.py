@@ -131,14 +131,45 @@ async def run_python(code: str, stream: bool = False) -> dict[str, str | None]:
             message = {"id": message_id, "code": code, "stream": stream}
 
             await send_message(_writer, message)
-            response = await receive_message(_reader)
 
-            # Check for errors in response
-            if response.get("error"):
-                raise McpError(ErrorData(code=4002, message=f"Blender execution error: {response['error']}"))
+            if stream:
+                # Handle streaming responses
+                output_chunks = []
 
-            # Return structured result
-            return {"output": response.get("output") or "", "error": response.get("error")}
+                while True:
+                    response = await receive_message(_reader)
+
+                    if response.get("id") != message_id:
+                        continue  # Ignore messages for other requests
+
+                    # Check for errors
+                    if response.get("error"):
+                        raise McpError(ErrorData(code=4002, message=f"Blender execution error: {response['error']}"))
+
+                    # Handle streaming chunk
+                    if "chunk" in response:
+                        chunk = response["chunk"]
+                        output_chunks.append(chunk)
+                        print(f"[STREAM] {chunk}")  # Output to console for real-time viewing
+
+                    # Check if streaming is complete
+                    if response.get("stream_end", False):
+                        break
+
+                # Return consolidated output
+                full_output = "\n".join(output_chunks) if output_chunks else (response.get("output") or "")
+                return {"output": full_output, "error": response.get("error")}
+
+            else:
+                # Handle regular non-streaming response
+                response = await receive_message(_reader)
+
+                # Check for errors in response
+                if response.get("error"):
+                    raise McpError(ErrorData(code=4002, message=f"Blender execution error: {response['error']}"))
+
+                # Return structured result
+                return {"output": response.get("output") or "", "error": response.get("error")}
 
         except TimeoutError as e:
             raise McpError(ErrorData(code=4003, message="Timeout waiting for Blender response")) from e
@@ -151,19 +182,19 @@ async def run_python(code: str, stream: bool = False) -> dict[str, str | None]:
 @mcp.tool()
 async def diagnose_connection() -> dict[str, str | bool]:
     """Diagnose the connection status between MCP server and Blender.
-    
+
     This tool performs comprehensive connection tests and provides specific
     instructions if issues are found. Use this tool whenever you suspect
     connection problems or before performing complex Blender operations.
-    
+
     Returns:
         dict: Detailed connection status and instructions
-        
+
     Raises:
         McpError: Never raises - always returns diagnostic information
     """
     global _reader, _writer
-    
+
     diagnosis = {
         "status": "unknown",
         "port_open": False,
@@ -172,17 +203,18 @@ async def diagnose_connection() -> dict[str, str | bool]:
         "code_execution": False,
         "blender_version": "",
         "instructions": "",
-        "success": False
+        "success": False,
     }
-    
+
     try:
         # Step 1: Check if port is available
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(2)
             result = sock.connect_ex(("localhost", 4777))
-            diagnosis["port_open"] = (result == 0)
-        
+            diagnosis["port_open"] = result == 0
+
         if not diagnosis["port_open"]:
             diagnosis["status"] = "port_closed"
             diagnosis["instructions"] = (
@@ -197,7 +229,7 @@ async def diagnose_connection() -> dict[str, str | bool]:
                 "⚠️ DO NOT attempt any Blender operations until connection is restored!"
             )
             return diagnosis
-        
+
         # Step 2: Test TCP connection
         async with _connection_lock:
             if not _reader or not _writer:
@@ -212,18 +244,19 @@ async def diagnose_connection() -> dict[str, str | bool]:
                     "⚠️ DO NOT attempt any Blender operations until connection is restored!"
                 )
                 return diagnosis
-            
+
             diagnosis["tcp_connected"] = True
-            
+
             # Step 3: Test authentication
             try:
                 import uuid
+
                 auth_id = str(uuid.uuid4())
                 auth_message = {"id": auth_id, "token": os.getenv("BLENDER_MCP_TOKEN", "test-token-123")}
-                
+
                 await send_message(_writer, auth_message)
                 auth_response = await receive_message(_reader)
-                
+
                 if auth_response.get("authenticated"):
                     diagnosis["authenticated"] = True
                     diagnosis["blender_version"] = auth_response.get("blender_version", "Unknown")
@@ -239,17 +272,14 @@ async def diagnose_connection() -> dict[str, str | bool]:
                         "⚠️ DO NOT attempt any Blender operations until authentication works!"
                     )
                     return diagnosis
-                
+
                 # Step 4: Test code execution
                 test_id = str(uuid.uuid4())
-                test_message = {
-                    "id": test_id,
-                    "code": "import bpy; print(f'Test OK: {bpy.app.version_string}')"
-                }
-                
+                test_message = {"id": test_id, "code": "import bpy; print(f'Test OK: {bpy.app.version_string}')"}
+
                 await send_message(_writer, test_message)
                 test_response = await receive_message(_reader)
-                
+
                 if test_response.get("error"):
                     diagnosis["status"] = "execution_failed"
                     diagnosis["instructions"] = (
@@ -264,7 +294,7 @@ async def diagnose_connection() -> dict[str, str | bool]:
                         "⚠️ DO NOT attempt any Blender operations until this is fixed!"
                     )
                     return diagnosis
-                
+
                 diagnosis["code_execution"] = True
                 diagnosis["status"] = "fully_connected"
                 diagnosis["success"] = True
@@ -275,7 +305,7 @@ async def diagnose_connection() -> dict[str, str | bool]:
                     f"Code Execution: Working\n\n"
                     f"🚀 Ready for Blender operations!"
                 )
-                
+
             except Exception as e:
                 diagnosis["status"] = "communication_error"
                 diagnosis["instructions"] = (
@@ -287,7 +317,7 @@ async def diagnose_connection() -> dict[str, str | bool]:
                     "4. Run this diagnostic again\n\n"
                     "⚠️ DO NOT attempt any Blender operations until connection is restored!"
                 )
-                
+
     except Exception as e:
         diagnosis["status"] = "diagnostic_error"
         diagnosis["instructions"] = (
@@ -299,7 +329,7 @@ async def diagnose_connection() -> dict[str, str | bool]:
             "4. Run this diagnostic again\n\n"
             "⚠️ DO NOT attempt any Blender operations until connection is restored!"
         )
-    
+
     return diagnosis
 
 
