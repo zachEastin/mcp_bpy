@@ -135,3 +135,7 @@ when running a command in the terminal assume its Powershell and format the comm
 - **Only catch `Exception` for**:
   - Top-level handlers that must not crash
   - Cleanup blocks (log at debug level)
+
+## Miscellaneous
+
+- If making edits to the server code the user must restart vscode to see the changes.

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import struct
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -14,7 +15,34 @@ from pydantic import BaseModel, Field
 
 
 # Pydantic models for structured output
-class BlenderObjectInfo(BaseModel):
+class BlenderAttributeGeneric(BaseModel):
+    name: str = Field(description="Name of the attribute")
+    domain: str = Field(description="Domain of the attribute")
+    data_type: str = Field(description="Type of the attribute")
+    length: int = Field(description="Length of the data of attribute, if applicable")
+    is_internal: bool = Field(description="Whether the attribute is internal to Blender")
+    is_required: bool = Field(description="Whether the attribute is required")
+
+class BlenderObjectInfoResult(BaseModel):
+    name: str = Field(description="Name of the object")
+    type: str = Field(description="Type of the object (MESH, CAMERA, LIGHT, etc.)")
+    data_path: str = Field(description="Data-block path in Blender")
+    active: bool = Field(description="Whether this is the active object")
+    visible: bool = Field(description="Whether the object is visible in viewport")
+    location: list[float] | tuple[float, ...] = Field(description="Object location (x, y, z)")
+    rotation: list[float] | tuple[float, ...] = Field(description="Object euler rotation (x, y, z)")
+    scale: list[float] | tuple[float, ...] = Field(description="Object scale (x, y, z)")
+    dimensions: list[float] | tuple[float, ...] = Field(description="Object dimensions (x, y, z)")
+    material_slots: dict[str, dict[str, bool | str | None]] = Field(description="Dictionary of material slots, keyed by slot name")
+    modifiers: list[str] = Field(description="List of modifiers")
+    constraints: list[str] = Field(description="List of constraints")
+    children: list[str] = Field(description="List of child objects")
+    parent: str | None = Field(description="Name of the parent object, if any")
+    vertex_groups: list[str] = Field(description="List of vertex groups")
+    other_attributes: dict[str, Any] = Field(description="Other attributes of the object as requested")
+
+
+class BlenderObjectInfoSimple(BaseModel):
     """Information about a Blender object."""
     name: str = Field(description="Name of the object")
     type: str = Field(description="Type of the object (MESH, CAMERA, LIGHT, etc.)")
@@ -24,9 +52,19 @@ class BlenderObjectInfo(BaseModel):
     location: list[float] = Field(description="Object location (x, y, z)")
 
 
+class BlenderObjectDataInfo(BaseModel):
+    """Information about a Blender object's data."""
+    name: str = Field(description="Name of the object")
+    type: str = Field(description="Type of the object (MESH, CAMERA, LIGHT, etc.)")
+    data_path: str = Field(description="Data-block path in Blender")
+    attributes: dict[str, BlenderAttributeGeneric] = Field(description="Attributes of the object data-block")
+    materials: list[str] = Field(description="List of material names applied to the object")
+    other_attributes: dict[str, Any] = Field(description="Other attributes of the object as requested")
+
+
 class ObjectListResult(BaseModel):
     """Result of listing objects in the scene."""
-    objects: list[BlenderObjectInfo] = Field(description="List of objects in the scene")
+    objects: list[BlenderObjectInfoSimple] = Field(description="List of objects in the scene")
     total_count: int = Field(description="Total number of objects")
     filtered_type: str | None = Field(description="Type filter applied, if any")
 
@@ -73,6 +111,83 @@ class AddonReloadResult(BaseModel):
     success: bool = Field(description="Whether the reload was successful")
     reloaded_modules: list[str] = Field(description="List of modules that were reloaded")
     errors: list[str] = Field(description="Any errors that occurred during reload")
+
+
+class NodeGroupSocketInfo(BaseModel):
+    """Information about a node group socket."""
+    type: str = Field(description="Socket type")
+    description: str = Field(description="Socket description")
+    identifier: str = Field(description="Socket identifier")
+    name: str = Field(description="Socket name")
+    default_value: Any | None = Field(description="Default value if applicable")
+
+
+class NodeGroupInfo(BaseModel):
+    """Information about a node group."""
+    name: str = Field(description="Name of the node group")
+    node_tree_type: str = Field(description="Type of the node tree")
+    node_count: int = Field(description="Number of nodes in the group")
+    inputs: list[NodeGroupSocketInfo] = Field(description="Input sockets")
+    outputs: list[NodeGroupSocketInfo] = Field(description="Output sockets")
+
+
+class NodeGroupListResult(BaseModel):
+    """Result of listing node groups."""
+    node_groups: list[NodeGroupInfo] = Field(description="List of node groups")
+    total_count: int = Field(description="Total number of node groups")
+
+
+class NodeSocketInfo(BaseModel):
+    """Information about a node socket."""
+    name: str = Field(description="Socket name")
+    description: str = Field(description="Socket description")
+    type: str = Field(description="Socket type")
+    default_value: Any | None = Field(description="Default value if applicable and not linked")
+    links: list[dict[str, Any]] = Field(description="Connected links")
+
+
+class NodePropertyInfo(BaseModel):
+    """Information about a node property."""
+    name: str = Field(description="Property name")
+    bl_rna_type: str = Field(description="Blender RNA type")
+    value: Any = Field(description="Property value")
+
+
+class NodeInfo(BaseModel):
+    """Detailed information about a node."""
+    name: str = Field(description="Node name")
+    label: str = Field(description="Node label")
+    bl_idname: str = Field(description="Blender identifier")
+    use_custom_color: bool = Field(description="Whether node uses custom color")
+    color: list[float] = Field(description="Node color (RGB)")
+    location: list[float] = Field(description="Node location (x, y)")
+    location_absolute: list[float] = Field(description="Absolute node location")
+    mute: bool = Field(description="Whether node is muted")
+    parent: str | None = Field(description="Parent frame node name if any")
+    selection_status: bool = Field(description="Whether node is selected")
+    inputs: list[NodeSocketInfo] = Field(description="Input sockets")
+    outputs: list[NodeSocketInfo] = Field(description="Output sockets")
+    properties: list[NodePropertyInfo] = Field(description="Node properties")
+
+
+class NodeLinkInfo(BaseModel):
+    """Information about a node link."""
+    from_node: str = Field(description="Source node name")
+    from_socket: dict[str, str] = Field(description="Source socket info")
+    to_node: str = Field(description="Target node name")
+    to_socket: dict[str, str] = Field(description="Target socket info")
+    is_valid: bool = Field(description="Whether the link is valid")
+    is_muted: bool = Field(description="Whether the link is muted")
+
+
+class NodeGroupDetailResult(BaseModel):
+    """Detailed result of node group information."""
+    node_group_name: str = Field(description="Name of the node group")
+    node_tree_type: str = Field(description="Type of the node tree")
+    nodes: list[NodeInfo] = Field(description="Detailed node information")
+    # links: list[NodeLinkInfo] = Field(description="Link information")
+    total_nodes: int = Field(description="Total number of nodes")
+    total_links: int = Field(description="Total number of links")
 
 # Global connection state
 _reader: asyncio.StreamReader | None = None
@@ -170,16 +285,70 @@ async def ensure_blender_connection():
             auth_response = await asyncio.wait_for(receive_message(_reader), timeout=5.0)
             
             if not auth_response.get("authenticated"):
-                raise McpError(ErrorData("CONNECTION_FAILED", "Authentication failed"))
+                raise McpError(ErrorData(code=4001, message="Authentication failed"))
                 
         except (TimeoutError, ConnectionRefusedError, OSError) as e:
             raise McpError(
                 ErrorData(
-                    "CONNECTION_FAILED",
-                    f"Cannot connect to Blender on {host}:{port}. "
+                    code=4000,
+                    message=f"Cannot connect to Blender on {host}:{port}. "
                     f"Make sure Blender is running with the MCP addon enabled. Error: {e}"
                 )
             ) from e
+
+
+async def send_handler_message(handler_name: str, params: dict | None = None) -> dict[str, Any]:
+    """Send a handler message to Blender and return the result.
+
+    Args:
+        handler_name: The name of the handler to execute
+        params: Optional parameters to pass to the handler
+
+    Returns:
+        dict: Handler execution result with 'output', 'error', and 'result' keys
+
+    Raises:
+        McpError: If not connected to Blender or execution fails
+    """
+    global _reader, _writer
+
+    async with _connection_lock:
+        # Ensure connection before proceeding
+        await ensure_blender_connection()
+
+        try:
+            # Generate unique message ID
+            message_id = str(uuid.uuid4())
+
+            # Send handler request
+            message = {
+                "id": message_id,
+                "handler": handler_name,
+                "params": params or {}
+            }
+
+            await send_message(_writer, message)  # type: ignore
+
+            # Handle response
+            response = await receive_message(_reader)  # type: ignore
+
+            # Check for errors in response
+            if response.get("error"):
+                raise McpError(ErrorData(code=4002, message=response["error"]))
+
+            # Return the response (includes output, error, and result)
+            return {
+                "output": response.get("output", ""),
+                "error": response.get("error"),
+                "result": response.get("result")
+            }
+
+        except TimeoutError as e:
+            raise McpError(ErrorData(code=4003, message="Timeout waiting for Blender response")) from e
+        except ConnectionError as e:
+            raise McpError(ErrorData(code=4004, message=f"Connection to Blender lost: {e}")) from e
+        except Exception as e:
+            raise McpError(ErrorData(code=4000, message=f"Unexpected error communicating with Blender: {e}")) from e
 
 
 async def send_message(writer: asyncio.StreamWriter, message: dict[str, Any]) -> None:
@@ -235,21 +404,19 @@ async def run_python(code: str, stream: bool = False) -> dict[str, str | None]:
 
         try:
             # Generate unique message ID
-            import uuid
-
             message_id = str(uuid.uuid4())
 
             # Send code execution request
             message = {"id": message_id, "code": code, "stream": stream}
 
-            await send_message(_writer, message)
+            await send_message(_writer, message)  # type: ignore
 
             if stream:
                 # Handle streaming responses
                 output_chunks = []
 
                 while True:
-                    response = await receive_message(_reader)
+                    response = await receive_message(_reader)  # type: ignore
 
                     if response.get("id") != message_id:
                         continue  # Ignore messages for other requests
@@ -274,7 +441,7 @@ async def run_python(code: str, stream: bool = False) -> dict[str, str | None]:
 
             else:
                 # Handle regular non-streaming response
-                response = await receive_message(_reader)
+                response = await receive_message(_reader)  # type: ignore
 
                 # Check for errors in response
                 if response.get("error"):
@@ -476,169 +643,152 @@ async def diagnose_connection() -> dict[str, str | bool]:
 
 
 @mcp.tool()
-async def list_objects(type: str | None = None) -> ObjectListResult:
+async def list_objects(only_view_layer: bool = False, type: str | None = None) -> ObjectListResult:
     """Return names & data-block paths of objects in scene.
-    
+
     Args:
+        only_view_layer: If True, only include objects in the view_layer
         type: Optional object type filter (MESH, CAMERA, LIGHT, etc.)
-    
+        other_attributes: Optional list of other attributes to include. Must be attributes to be called directly on `bpy.types.Object`.
+
     Returns:
         ObjectListResult: Structured information about objects in the scene
-    
+
     Raises:
         McpError: If not connected to Blender or execution fails
     """
-    # Ensure connection
-    await ensure_blender_connection()
-    
-    # Build the Python code to list objects
-    type_filter = f"if obj.type != '{type}': continue" if type else ""
-    code = f'''
-import bpy
-import json
+    # Send handler message to Blender
+    response = await send_handler_message(
+        "list_objects",
+        {"only_view_layer": only_view_layer, "type": type}
+    )
 
-# Get all objects in the scene
-all_objects = list(bpy.context.scene.objects)
-active_object = bpy.context.view_layer.objects.active
-
-objects_data = []
-for obj in all_objects:
-    # Check type filter
-    {type_filter}
-    
-    # Get object information
-    obj_info = {{
-        "name": obj.name,
-        "type": obj.type,
-        "data_path": f"bpy.data.objects['{{obj.name}}']",
-        "active": obj == active_object,
-        "visible": obj.visible_get(),
-        "location": list(obj.location)
-    }}
-    objects_data.append(obj_info)
-
-# Create result
-result = {{
-    "objects": objects_data,
-    "total_count": len(objects_data),
-    "filtered_type": "{type}" if "{type}" else None
-}}
-
-print("RESULT:" + json.dumps(result))
-'''
-    
-    # Execute the code
-    response = await run_python(code, stream=False)
-    
     if response["error"]:
         raise McpError(ErrorData(code=4002, message=f"Failed to list objects: {response['error']}"))
-    
-    # Parse the result from the output
-    output = response["output"] or ""
-    if "RESULT:" in output:
-        result_str = output.split("RESULT:")[1].strip()
-        try:
-            result_data = json.loads(result_str)  # Use json.loads instead of eval
-            return ObjectListResult(**result_data)
-        except Exception as e:
-            raise McpError(ErrorData(code=4003, message=f"Failed to parse object list result: {e}")) from e
-    
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return ObjectListResult(**result_data)
+
     # Fallback empty result
     return ObjectListResult(objects=[], total_count=0, filtered_type=type)
 
 
 @mcp.tool()
-async def inspect_addon(name: str) -> AddonInspectionResult:
-    """List classes, operators, keymaps registered by addon.
-    
+async def get_object_info(object_name: str, get_as_evaluated: bool = False, other_attributes: list[str] | None = None) -> BlenderObjectInfoResult:
+    """Return information about a specific object in the scene.
+
     Args:
-        name: Name of the addon to inspect
-    
+        object_name: Name of the object to retrieve information for
+        get_as_evaluated: If True, return evaluated data-blocks (useful to get the result of modifiers)
+        other_attributes: Optional list of other attributes to include. Must be attributes to be called directly on `bpy.types.Object`.
+
     Returns:
-        AddonInspectionResult: Structured information about the addon
-    
+        ObjectInfoResult: Structured information about the object in the scene
+
     Raises:
         McpError: If not connected to Blender or execution fails
     """
-    # Ensure connection
-    await ensure_blender_connection()
-    
-    code = f'''
-import bpy
-import addon_utils
-import sys
-import json
+    # Send handler message to Blender
+    response = await send_handler_message(
+        "get_object_info",
+        {"object_name": object_name, "get_as_evaluated": get_as_evaluated, "other_attributes": other_attributes}
+    )
 
-addon_name = "{name}"
+    if response["error"]:
+        raise McpError(ErrorData(code=4002, message=f"Failed to get object info: {response['error']}"))
 
-# Get addon info
-addon = None
-enabled = False
-version = None
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return BlenderObjectInfoResult(**result_data)
 
-# Find the addon
-for mod in addon_utils.modules():
-    if mod.__name__ == addon_name or mod.bl_info.get("name") == addon_name:
-        addon = mod
-        enabled = addon_name in bpy.context.preferences.addons
-        version = str(mod.bl_info.get("version", "Unknown"))
-        break
+    # Fallback empty result
+    return BlenderObjectInfoResult(
+        name="UNKNOWN",
+        type="UNKNOWN",
+        data_path="",
+        active=False,
+        visible=False,
+        location=(0.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0),
+        scale=(1.0, 1.0, 1.0),
+        dimensions=(0.0, 0.0, 0.0),
+        material_slots={},
+        modifiers=[],
+        constraints=[],
+        children=[],
+        parent=None,
+        vertex_groups=[],
+        other_attributes={}
+    )
 
-if not addon:
-    # Try to find by partial name
-    for mod in addon_utils.modules():
-        if addon_name.lower() in mod.__name__.lower() or addon_name.lower() in mod.bl_info.get("name", "").lower():
-            addon = mod
-            enabled = mod.__name__ in bpy.context.preferences.addons
-            version = str(mod.bl_info.get("version", "Unknown"))
-            addon_name = mod.__name__  # Use the actual module name
-            break
 
-# Simple addon info only - avoid complex introspection
-operators = []
-classes_info = []
-keymaps = []
-properties = []
+@mcp.tool()
+async def get_object_data_info(object_name: str, get_as_evaluated: bool = False, other_attributes: list[str] | None = None) -> BlenderObjectDataInfo:
+    """Return information about a specific object's data
 
-# Try to get basic properties if addon is found
-if addon:
-    try:
-        # Try to get addon preferences
-        prefs = bpy.context.preferences.addons.get(addon_name)
-        if prefs:
-            properties.append("Has preferences object")
-    except:
-        pass
+    Args:
+        object_name: Name of the object to retrieve information for
+        get_as_evaluated: If True, return evaluated data-blocks (useful to get the result of modifiers)
+        other_attributes: Optional list of other attributes to include. Must be attributes to be called directly on `bpy.types.Mesh`, `bpy.types.Curve`, etc.
 
-result = {{
-    "addon_name": addon_name,
-    "enabled": enabled,
-    "version": version,
-    "operators": operators,
-    "classes": classes_info,
-    "keymaps": keymaps,
-    "properties": properties
-}}
+    Returns:
+        BlenderObjectDataInfo: Structured information about the object's data
 
-print("RESULT:" + json.dumps(result))
-'''
-    
-    # Execute the code
-    response = await run_python(code, stream=False)
-    
+    Raises:
+        McpError: If not connected to Blender or execution fails
+    """
+    # Send handler message to Blender
+    response = await send_handler_message(
+        "get_object_data_info",
+        {"object_name": object_name, "get_as_evaluated": get_as_evaluated, "other_attributes": other_attributes}
+    )
+
+    if response["error"]:
+        raise McpError(ErrorData(code=4002, message=f"Failed to get object info: {response['error']}"))
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return BlenderObjectDataInfo(**result_data)
+
+    # Fallback empty result
+    return BlenderObjectDataInfo(
+        name="UNKNOWN",
+        type="UNKNOWN",
+        data_path="",
+        attributes={},
+        materials=[],
+        other_attributes={}
+    )
+
+
+@mcp.tool()
+async def inspect_addon(name: str) -> AddonInspectionResult:
+    """List classes, operators, keymaps registered by addon.
+
+    Args:
+        name: Name of the addon to inspect
+
+    Returns:
+        AddonInspectionResult: Structured information about the addon
+
+    Raises:
+        McpError: If not connected to Blender or execution fails
+    """
+    # Send handler message to Blender
+    response = await send_handler_message("inspect_addon", {"name": name})
+
     if response["error"]:
         raise McpError(ErrorData(code=4002, message=f"Failed to inspect addon: {response['error']}"))
-    
-    # Parse the result from the output
-    output = response["output"] or ""
-    if "RESULT:" in output:
-        result_str = output.split("RESULT:")[1].strip()
-        try:
-            result_data = json.loads(result_str)  # Use json.loads instead of eval
-            return AddonInspectionResult(**result_data)
-        except Exception as e:
-            raise McpError(ErrorData(code=4003, message=f"Failed to parse addon inspection result: {e}")) from e
-    
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return AddonInspectionResult(**result_data)
+
     # Fallback empty result
     return AddonInspectionResult(
         addon_name=name,
@@ -654,134 +804,27 @@ print("RESULT:" + json.dumps(result))
 @mcp.tool()
 async def reload_addon(name: str | None = None) -> AddonReloadResult:
     """bpy.ops.reload_scripts() + targeted reload.
-    
+
     Args:
         name: Optional name of specific addon to reload. If None, performs global reload.
-    
+
     Returns:
         AddonReloadResult: Information about the reload operation
-    
+
     Raises:
         McpError: If not connected to Blender or execution fails
     """
-    # Ensure connection
-    await ensure_blender_connection()
-    
-    if name:
-        # Targeted addon reload
-        code = f'''
-import bpy
-import addon_utils
-import sys
-import importlib
-import json
+    # Send handler message to Blender
+    response = await send_handler_message("reload_addon", {"name": name})
 
-addon_name = "{name}"
-errors = []
-reloaded_modules = []
-
-try:
-    # First try to find and disable the addon
-    addon_found = False
-    for mod in addon_utils.modules():
-        if mod.__name__ == addon_name or mod.bl_info.get("name") == addon_name:
-            addon_name = mod.__name__  # Use actual module name
-            addon_found = True
-            break
-    
-    if not addon_found:
-        errors.append(f"Addon '{{addon_name}}' not found")
-    else:
-        # Disable addon if enabled
-        if addon_name in bpy.context.preferences.addons:
-            bpy.ops.preferences.addon_disable(module=addon_name)
-        
-        # Reload the addon module and its submodules
-        modules_to_reload = []
-        for module_name in list(sys.modules.keys()):
-            if module_name.startswith(addon_name):
-                modules_to_reload.append(module_name)
-        
-        for module_name in modules_to_reload:
-            try:
-                if module_name in sys.modules:
-                    importlib.reload(sys.modules[module_name])
-                    reloaded_modules.append(module_name)
-            except Exception as e:
-                errors.append(f"Failed to reload module {{module_name}}: {{str(e)}}")
-        
-        # Re-enable addon
-        try:
-            bpy.ops.preferences.addon_enable(module=addon_name)
-        except Exception as e:
-            errors.append(f"Failed to re-enable addon: {{str(e)}}")
-
-    success = len(errors) == 0
-    
-except Exception as e:
-    errors.append(f"Unexpected error: {{str(e)}}")
-    success = False
-
-result = {{
-    "addon_name": addon_name,
-    "global_reload": False,
-    "success": success,
-    "reloaded_modules": reloaded_modules,
-    "errors": errors
-}}
-
-print("RESULT:" + json.dumps(result))
-'''
-    else:
-        # Global script reload
-        code = '''
-import bpy
-import sys
-import json
-
-errors = []
-reloaded_modules = []
-
-try:
-    # Perform global script reload
-    bpy.ops.script.reload()
-    
-    # Get list of all Python modules (simplified)
-    reloaded_modules = [name for name in sys.modules.keys() if not name.startswith('_')][:20]  # Limit output
-    
-    success = True
-    
-except Exception as e:
-    errors.append(f"Global reload failed: {str(e)}")
-    success = False
-
-result = {
-    "addon_name": None,
-    "global_reload": True,
-    "success": success,
-    "reloaded_modules": reloaded_modules,
-    "errors": errors
-}
-
-print("RESULT:" + json.dumps(result))
-'''
-    
-    # Execute the code
-    response = await run_python(code, stream=False)
-    
     if response["error"]:
         raise McpError(ErrorData(code=4002, message=f"Failed to reload addon: {response['error']}"))
-    
-    # Parse the result from the output
-    output = response["output"] or ""
-    if "RESULT:" in output:
-        result_str = output.split("RESULT:")[1].strip()
-        try:
-            result_data = json.loads(result_str)  # Use json.loads instead of eval
-            return AddonReloadResult(**result_data)
-        except Exception as e:
-            raise McpError(ErrorData(code=4003, message=f"Failed to parse reload result: {e}")) from e
-    
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return AddonReloadResult(**result_data)
+
     # Fallback result
     return AddonReloadResult(
         addon_name=name,
@@ -789,6 +832,77 @@ print("RESULT:" + json.dumps(result))
         success=False,
         reloaded_modules=[],
         errors=["Failed to parse reload result"]
+    )
+
+
+@mcp.tool()
+async def list_node_groups() -> NodeGroupListResult:
+    """List all node trees (a.k.a. node groups) from bpy.data.node_groups.
+    
+    For each node group, returns name, node_tree_type, node_count, and 
+    detailed information about inputs and outputs including type, description,
+    identifier, and default_value if applicable.
+
+    Returns:
+        NodeGroupListResult: Structured information about all node groups
+
+    Raises:
+        McpError: If not connected to Blender or execution fails
+    """
+    # Send handler message to Blender
+    response = await send_handler_message("list_node_groups", {})
+
+    if response["error"]:
+        raise McpError(ErrorData(code=4002, message=f"Failed to list node groups: {response['error']}"))
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return NodeGroupListResult(**result_data)
+
+    # Fallback result
+    return NodeGroupListResult(
+        node_groups=[],
+        total_count=0
+    )
+
+
+@mcp.tool()
+async def get_node_group_info(name: str) -> NodeGroupDetailResult:
+    """Return a detailed, structured representation of a node group suitable for complex groups.
+
+    For each node in the group, includes name, label, bl_idname, use_custom_color, color,
+    location, location_absolute, mute, parent, selection_status, and detailed socket and
+    property information. Also includes comprehensive link information.
+
+    Args:
+        name: Name of the node group to get detailed information for
+
+    Returns:
+        NodeGroupDetailResult: Detailed structured information about the node group
+
+    Raises:
+        McpError: If not connected to Blender or execution fails
+    """
+    # Send handler message to Blender
+    response = await send_handler_message("get_node_group_info", {"name": name})
+
+    if response["error"]:
+        raise McpError(ErrorData(code=4002, message=f"Failed to get node group info: {response['error']}"))
+
+    # Return structured result
+    result_data = response.get("result")
+    if result_data:
+        return NodeGroupDetailResult(**result_data)
+
+    # Fallback result
+    return NodeGroupDetailResult(
+        node_group_name=name,
+        node_tree_type="UNKNOWN",
+        nodes=[],
+        # links=[],
+        total_nodes=0,
+        total_links=0
     )
 
 
