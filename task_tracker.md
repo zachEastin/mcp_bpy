@@ -399,3 +399,123 @@ Future enhancements could include:
 - Progress percentage reporting for long operations
 - Cancellation support for streaming operations
 - Buffering strategies for high-frequency output
+
+---
+
+## Phase 4 · Introspection & Helper Tools ✅
+
+**Goal:** Add structured introspection tools and AI-friendly prompt templates for enhanced Blender development workflow  
+**Target Result:** Three new MCP tools with Pydantic models + prompt templates for debugging and development
+
+### Tasks
+
+#### 1. New MCP Tools ✅
+- [x] `list_objects(type?: str)` - Return names & data-block paths of objects in scene
+  - [x] Structured Pydantic model `ObjectListResult` with object details
+  - [x] Optional type filtering (MESH, CAMERA, LIGHT, etc.)
+  - [x] Returns object properties: name, type, data_path, active, visible, location
+- [x] `inspect_addon(name: str)` - List classes, operators, keymaps registered by addon
+  - [x] Structured Pydantic model `AddonInspectionResult`
+  - [x] Discovers operators, classes, keymaps, and properties
+  - [x] Handles both enabled and disabled addons
+  - [x] Includes version information and registration status
+- [x] `reload_addon(name?: str)` - `bpy.ops.reload_scripts()` + targeted reload
+  - [x] Structured Pydantic model `AddonReloadResult`
+  - [x] Targeted addon reload or global script reload
+  - [x] Reports reloaded modules and any errors
+  - [x] Graceful error handling with detailed feedback
+
+#### 2. Structured Output Implementation ✅
+- [x] All tools use typed `@mcp.tool` decorators with Pydantic models
+- [x] Comprehensive field descriptions with `Field()` annotations
+- [x] Modern Python 3.9+ type annotations (`list[T]`, `str | None`)
+- [x] Structured error handling with MCP error codes
+- [x] Result parsing from Blender execution output
+
+#### 3. Prompt Templates ✅
+- [x] Create `prompts/` directory for AI-friendly templates
+- [x] **"Debug Traceback"** template (`debug_traceback.md`)
+  - [x] Wraps terminal logs and error information for AI analysis
+  - [x] Parameterized template with operation context
+  - [x] Structured format for root cause analysis
+- [x] **"Blender Operation"** template (`blender_operation.md`)
+  - [x] Code generation template for Blender Python tasks
+  - [x] Context-aware with scene information
+  - [x] Quality requirements and best practices
+- [x] **"Addon Development"** template (`addon_development.md`)
+  - [x] Comprehensive addon development assistance
+  - [x] Covers operators, panels, properties, registration
+  - [x] Task-specific quick request formats
+
+#### 4. Testing & Documentation ✅
+- [x] Comprehensive test suite in `tests/test_phase4_tools.py`
+  - [x] Test all three new tools with various scenarios
+  - [x] Mock Blender execution responses
+  - [x] Integration testing between tools
+  - [x] Error handling and edge case coverage
+- [x] Update documentation and code comments
+- [x] Append progress to `task_tracker.md`
+
+### Implementation Details
+
+**Pydantic Models:**
+- `BlenderObjectInfo` - Individual object metadata
+- `ObjectListResult` - Scene object listing with filtering
+- `AddonOperatorInfo` - Operator registration details
+- `AddonClassInfo` - Class type and identifier information
+- `AddonKeymapInfo` - Keymap and key binding data
+- `AddonInspectionResult` - Complete addon analysis
+- `AddonReloadResult` - Reload operation results
+
+**Code Generation Pattern:**
+All tools use a consistent pattern:
+1. Generate Blender Python code as string
+2. Execute via existing `run_python()` tool
+3. Parse structured output with `RESULT:` prefix
+4. Return typed Pydantic models to MCP client
+
+**Error Handling:**
+- MCP error codes (4002: execution, 4003: parsing)
+- Exception chaining with `from e` clauses
+- Graceful fallbacks with empty structured results
+- Detailed error messages for debugging
+
+### Testing Results
+```bash
+# All Phase 4 tests pass
+uv run pytest tests/test_phase4_tools.py -v
+```
+
+**Test Coverage:**
+- ✅ Object listing with and without type filters
+- ✅ Addon inspection for enabled/disabled/missing addons
+- ✅ Targeted and global addon reloading
+- ✅ Error scenarios and edge cases
+- ✅ Tool integration workflows
+
+### Status: ✅ COMPLETE
+
+**Phase 4 objectives achieved:**
+- ✅ Three new introspection tools with structured Pydantic output
+- ✅ AI-friendly prompt templates for development workflow
+- ✅ Comprehensive testing and documentation
+- ✅ Ready for real-world Blender development assistance
+
+**Available for Testing:**
+Use the new tools via MCP interface:
+```python
+# List all objects in scene
+#mcp_bpy-mcp_list_objects
+
+# List only mesh objects  
+#mcp_bpy-mcp_list_objects type="MESH"
+
+# Inspect an addon
+#mcp_bpy-mcp_inspect_addon name="bpy_mcp_addon"
+
+# Reload specific addon
+#mcp_bpy-mcp_reload_addon name="my_addon"
+
+# Global script reload
+#mcp_bpy-mcp_reload_addon
+```
