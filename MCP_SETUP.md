@@ -14,8 +14,11 @@ This file provides configuration for connecting VS Code to the Blender MCP serve
        "bpy-mcp": {
          "command": "uv",
          "args": ["run", "python", "-m", "bpy_mcp.server"],
-         "cwd": "t:\\Coding_Projects\\mcp_bpy",
-         "env": {}
+         "cwd": "t:\\Coding_Projects\\blender_dev_mcp\\mcp_bpy",
+         "env": {
+           "BLENDER_MCP_PORT": "4777",
+           "BLENDER_MCP_TOKEN": "optional-token"
+         }
        }
      }
    }
@@ -32,13 +35,32 @@ This file provides configuration for connecting VS Code to the Blender MCP serve
 ## Available Tools
 
 - `hello_blender`: A test tool that returns a greeting from the Blender MCP server
+- `run_python`: Execute Python code in the attached Blender instance
+
+## Environment Variables
+
+- `BLENDER_MCP_PORT`: Port number for Blender listener (default: 4777)
+- `BLENDER_MCP_TOKEN`: Authentication token for Blender connection (optional)
+
+## VS Code Copilot Integration
+
+With the above configuration, you can use the MCP tools directly in VS Code Copilot chat:
+
+```
+@workspace Can you create a cube in Blender using the run_python tool?
+```
+
+The assistant can then use:
+```python
+run_python(code="bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))")
+```
 
 ## Testing
 
 To test the server manually:
 
 ```bash
-cd t:\Coding_Projects\mcp_bpy
+cd t:\Coding_Projects\blender_dev_mcp\mcp_bpy
 uv run python -m bpy_mcp.server
 ```
 
@@ -47,3 +69,18 @@ Or use the configured script:
 ```bash
 uv run bpy-mcp
 ```
+
+## Troubleshooting
+
+1. **Connection Issues**: 
+   - Ensure Blender is running with BPY MCP extension enabled
+   - Check that the port matches between VS Code config and Blender extension
+   - Verify network access is enabled in Blender
+
+2. **Authentication Failures**:
+   - Check that the token matches between VS Code config and Blender extension
+   - Ensure token authentication is enabled in Blender extension preferences
+
+3. **Tool Not Available**:
+   - Restart VS Code after configuration changes
+   - Check VS Code's MCP server logs for connection errors
