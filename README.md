@@ -32,10 +32,15 @@ uv run mcp dev bpy_mcp/server.py
 
 ### 2. Install Blender Extension
 
-1. Copy `bpy_mcp_addon/` directory to your Blender extensions folder
-2. Open Blender Preferences > Add-ons
-3. Find and enable "BPY MCP" in the Development category
-4. Configure network settings and start the server
+1. Download or clone the extension from [zachEastin/bpy_mcp_addon](https://github.com/zachEastin/bpy_mcp_addon):
+   ```bash
+   git clone https://github.com/zachEastin/bpy_mcp_addon.git
+   ```
+   Or download and extract the ZIP from GitHub.
+2. Copy the `bpy_mcp_addon/` directory to your Blender extensions folder
+3. Open Blender Preferences > Add-ons
+4. Find and enable "BPY MCP" in the Development category
+5. Configure network settings and start the server
 
 ### 3. Test Integration
 
