@@ -189,6 +189,54 @@ class NodeGroupDetailResult(BaseModel):
     total_nodes: int = Field(description="Total number of nodes")
     total_links: int = Field(description="Total number of links")
 
+
+class OperatorPropertyInfo(BaseModel):
+    """Information about an operator property."""
+    name: str = Field(description="Property name")
+    type: str = Field(description="Property type (StringProperty, BoolProperty, etc.)")
+    description: str = Field(description="Property description")
+    default: str | None = Field(description="Default value as string")
+    options: list[str] = Field(description="Property options (e.g., HIDDEN, ANIMATABLE)")
+
+
+class OperatorGenerationRequest(BaseModel):
+    """Request parameters for generating a Blender operator."""
+    name: str = Field(description="Human-readable name of the operator (e.g., 'Add Cube')")
+    description: str = Field(description="Description of what the operator does")
+    category: str = Field(
+        description="Category for the operator (e.g., 'MESH', 'OBJECT', 'CUSTOM')",
+        default="OBJECT"
+    )
+    include_invoke: bool = Field(
+        description="Whether to include invoke() method", default=False
+    )
+    include_poll: bool = Field(
+        description="Whether to include poll() method", default=False
+    )
+    include_modal: bool = Field(
+        description="Whether to include modal() method for interactive operators",
+        default=False
+    )
+    properties: list[OperatorPropertyInfo] = Field(
+        description="List of properties for the operator", default_factory=list
+    )
+    output_file: str | None = Field(
+        description="Optional output file path. If None, will be written to current workspace",
+        default=None
+    )
+
+
+class OperatorGenerationResult(BaseModel):
+    """Result of operator generation."""
+    success: bool = Field(description="Whether generation was successful")
+    file_path: str = Field(description="Path where the operator was written")
+    class_name: str = Field(description="Generated class name")
+    bl_idname: str = Field(description="Generated bl_idname")
+    operator_code: str = Field(description="Generated operator code")
+    registration_code: str = Field(description="Generated registration code")
+    errors: list[str] = Field(description="Any errors encountered", default_factory=list)
+    warnings: list[str] = Field(description="Any warnings", default_factory=list)
+
 # Global connection state
 _reader: asyncio.StreamReader | None = None
 _writer: asyncio.StreamWriter | None = None
@@ -904,6 +952,267 @@ async def get_node_group_info(name: str) -> NodeGroupDetailResult:
         total_nodes=0,
         total_links=0
     )
+
+
+@mcp.tool()
+async def create_bpy_operator(
+    name: str,
+    description: str,
+    category: str = "OBJECT",
+    include_invoke: bool = False,
+    include_poll: bool = False,
+    include_modal: bool = False,
+    properties: list[dict] | None = None,
+    output_file: str | None = None
+) -> OperatorGenerationResult:
+    """Generate Blender operator boilerplate code.
+
+    Creates a complete Blender operator class with proper bl_idname, bl_label,
+    and execute() method. This tool runs entirely on the IDE side and does not
+    require a connection to Blender.
+
+    For more information about Blender operators, see:
+    - https://docs.blender.org/api/current/bpy.types.Operator.html
+    - https://docs.blender.org/api/current/bpy.ops.html
+
+    Args:
+        name: Human-readable name of the operator (e.g., 'Add Cube')
+        description: Description of what the operator does
+        category: Category for the operator (e.g., 'MESH', 'OBJECT', 'CUSTOM')
+        include_invoke: Whether to include invoke() method
+        include_poll: Whether to include poll() method
+        include_modal: Whether to include modal() method for interactive operators
+        properties: List of property dicts with keys: name, type, description, default, options
+        output_file: Optional output file path. If None, creates in current workspace
+
+    Returns:
+        OperatorGenerationResult: Information about the generated operator
+
+    Raises:
+        McpError: If generation fails or validation errors occur
+    """
+    import re
+    from pathlib import Path
+
+    errors = []
+    warnings = []
+
+    try:
+        # Validate inputs
+        if not name or not name.strip():
+            errors.append("Operator name cannot be empty")
+        if not description or not description.strip():
+            errors.append("Operator description cannot be empty")
+
+        if errors:
+            return OperatorGenerationResult(
+                success=False,
+                file_path="",
+                class_name="",
+                bl_idname="",
+                operator_code="",
+                registration_code="",
+                errors=errors,
+                warnings=warnings
+            )
+
+        # Generate class name from operator name
+        # Convert "Add Cube" -> "AddCube"
+        class_name = "".join(word.capitalize() for word in re.findall(r'\w+', name))
+        class_name = f"{class_name}Operator"
+
+        # Generate bl_idname from operator name
+        # Convert "Add Cube" -> "mesh.add_cube" or "object.add_cube"
+        idname_suffix = "_".join(re.findall(r'\w+', name.lower()))
+        category_prefix = category.lower() if category else "object"
+        bl_idname = f"{category_prefix}.{idname_suffix}"
+
+        # Generate properties code
+        properties_code = ""
+        properties_imports = set()
+        if properties:
+            prop_lines = []
+            for prop in properties:
+                prop_name = prop.get("name", "")
+                prop_type = prop.get("type", "StringProperty")
+                prop_desc = prop.get("description", "")
+                prop_default = prop.get("default")
+                prop_options = prop.get("options", [])
+
+                if not prop_name:
+                    warnings.append(f"Skipping property with empty name: {prop}")
+                    continue
+
+                # Add import for property type
+                properties_imports.add(prop_type)
+
+                # Build property definition
+                prop_line = f'    {prop_name}: {prop_type}('
+                prop_args = []
+                
+                if prop_desc:
+                    prop_args.append(f'name="{prop_desc}"')
+                    prop_args.append(f'description="{prop_desc}"')
+                
+                if prop_default is not None:
+                    if prop_type in ["StringProperty"]:
+                        prop_args.append(f'default="{prop_default}"')
+                    elif prop_type in ["BoolProperty"]:
+                        prop_args.append(f'default={str(prop_default).capitalize()}')
+                    elif prop_type in ["IntProperty", "FloatProperty"]:
+                        prop_args.append(f'default={prop_default}')
+                
+                if prop_options:
+                    options_str = "{" + ", ".join(f'"{opt}"' for opt in prop_options) + "}"
+                    prop_args.append(f'options={options_str}')
+
+                prop_line += ", ".join(prop_args) + ")"
+                prop_lines.append(prop_line)
+
+            if prop_lines:
+                properties_code = "\n\n    # Operator properties\n" + "\n".join(prop_lines)
+
+        # Generate method stubs
+        invoke_method = ""
+        if include_invoke:
+            invoke_method = '''
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+        """Invoke the operator.
+        
+        Called when the operator is invoked by the user.
+        """
+        # TODO: Implement invoke logic here
+        return self.execute(context)'''
+
+        poll_method = ""
+        if include_poll:
+            poll_method = '''
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        """Check if the operator can be executed.
+        
+        Returns:
+            bool: True if the operator can be executed, False otherwise
+        """
+        # TODO: Implement poll logic here
+        return True'''
+
+        modal_method = ""
+        if include_modal:
+            modal_method = '''
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+        """Handle modal interaction.
+        
+        Called repeatedly while the operator is running in modal mode.
+        """
+        # TODO: Implement modal logic here
+        if event.type in {'LEFTMOUSE'}:
+            return {'FINISHED'}
+        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            return {'CANCELLED'}
+        
+        return {'RUNNING_MODAL'}'''
+
+        # Generate complete operator code
+        imports_section = "import bpy\nfrom bpy.types import Operator"
+        if properties_imports:
+            props_import = ", ".join(sorted(properties_imports))
+            imports_section += f"\nfrom bpy.props import {props_import}"
+
+        operator_code = f'''{imports_section}
+
+
+class {class_name}(Operator):
+    """{description}."""
+    
+    bl_idname = "{bl_idname}"
+    bl_label = "{name}"
+    bl_description = "{description}"
+    bl_options = {{'REGISTER', 'UNDO'}}{properties_code}{poll_method}{invoke_method}
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        """Execute the operator.
+        
+        Args:
+            context: Blender context
+            
+        Returns:
+            set[str]: Execution result ({'FINISHED'}, {'CANCELLED'}, etc.)
+        """
+        # TODO: Implement your operator logic here
+        self.report({{'INFO'}}, "{name} executed successfully")
+        return {{'FINISHED'}}{modal_method}'''
+
+        # Generate registration code
+        registration_code = f'''
+
+def register():
+    """Register the operator."""
+    bpy.utils.register_class({class_name})
+
+
+def unregister():
+    """Unregister the operator."""
+    bpy.utils.unregister_class({class_name})
+
+
+if __name__ == "__main__":
+    register()'''
+
+        # Combine operator and registration code
+        full_code = operator_code + registration_code
+
+        # Determine output file path
+        if output_file is None:
+            # Default to creating in current workspace
+            workspace_path = Path.cwd()
+            # Create an operators directory if it doesn't exist
+            operators_dir = workspace_path / "operators"
+            operators_dir.mkdir(exist_ok=True)
+            output_file = str(operators_dir / f"{idname_suffix}_operator.py")
+        else:
+            output_file = str(Path(output_file).resolve())
+
+        # Write the file
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(full_code)
+        except Exception as e:
+            errors.append(f"Failed to write file: {e}")
+            return OperatorGenerationResult(
+                success=False,
+                file_path=output_file,
+                class_name=class_name,
+                bl_idname=bl_idname,
+                operator_code=operator_code,
+                registration_code=registration_code,
+                errors=errors,
+                warnings=warnings
+            )
+
+        return OperatorGenerationResult(
+            success=True,
+            file_path=output_file,
+            class_name=class_name,
+            bl_idname=bl_idname,
+            operator_code=operator_code,
+            registration_code=registration_code,
+            errors=errors,
+            warnings=warnings
+        )
+
+    except Exception as e:
+        errors.append(f"Unexpected error during operator generation: {e}")
+        return OperatorGenerationResult(
+            success=False,
+            file_path="",
+            class_name="",
+            bl_idname="",
+            operator_code="",
+            registration_code="",
+            errors=errors,
+            warnings=warnings
+        )
 
 
 def main() -> None:
