@@ -434,6 +434,56 @@ def hello_blender() -> str:
 async def run_python(code: str, stream: bool = False) -> dict[str, str | None]:
     """Execute Python code in the attached Blender instance.
 
+    IMPORTANT: Code executes in a RESTRICTED ENVIRONMENT for security.
+
+    AVAILABLE BUILT-INS:
+    - Standard types: str, int, float, bool, list, dict, tuple, set
+    - Iterators: range, enumerate, zip, sorted, reversed
+    - Math/logic: min, max, sum, any, all, len
+    - Introspection: dir, vars, hasattr, getattr, isinstance, type
+    - Error handling: Exception, ValueError, TypeError, AttributeError, KeyError,
+      IndexError, RuntimeError, NotImplementedError, StopIteration
+    - I/O: print (output captured and returned)
+    - Imports: __import__ (allows importing modules)
+    - Scope access: globals(), locals() (returns safe globals only)
+
+    AVAILABLE MODULES:
+    - bpy: Full Blender Python API
+    - bmesh: Blender mesh editing utilities
+    - mathutils: Blender math utilities (Vector, Matrix, etc.)
+
+    RESTRICTED/FORBIDDEN:
+    - File operations: open, file
+    - Code execution: eval, exec, compile
+    - User interaction: input, raw_input
+    - Process control: exit, quit
+    - System access: help, credits, license, copyright
+    - Attribute manipulation: delattr, setattr
+    - Module reloading: reload
+    - Internal Python objects: __loader__, __spec__, __package__
+
+    SECURITY NOTES:
+    - Code runs in Blender's main thread - avoid long-running operations
+    - stdout is captured and returned in the 'output' field
+    - Use try/except blocks for error handling as exceptions are caught
+    - Import statements work normally within the restricted environment
+
+    EXAMPLES:
+    ```python
+    # List all mesh objects
+    meshes = [obj.name for obj in bpy.data.objects if obj.type == 'MESH']
+    print(f"Found {len(meshes)} mesh objects: {meshes}")
+
+    # Create a new cube
+    bpy.ops.mesh.primitive_cube_add()
+    print(f"Active object: {bpy.context.active_object.name}")
+
+    # Use bmesh for mesh operations
+    import bmesh
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=2.0)
+    ```
+
     Args:
         code: Python code to execute in Blender
         stream: Whether to stream the output (currently ignored, always returns full result)
