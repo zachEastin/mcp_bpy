@@ -1,17 +1,20 @@
 """FastMCP server for Blender Add-on management."""
+from __future__ import annotations
 
 import asyncio
 import json
 import os
 import struct
 import uuid
-from contextlib import asynccontextmanager
+
 from typing import Any
+from contextlib import asynccontextmanager
 
 from mcp import McpError
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ErrorData
 from pydantic import BaseModel, Field
+
 
 
 # Pydantic models for structured output
@@ -168,6 +171,7 @@ class NodeInfo(BaseModel):
     inputs: list[NodeSocketInfo] = Field(description="Input sockets")
     outputs: list[NodeSocketInfo] = Field(description="Output sockets")
     properties: list[NodePropertyInfo] = Field(description="Node properties")
+    node_tree: dict = Field(description="If node is a group node, this is the information of the node tree of that group. Returns empty if not a group.")
 
 
 class NodeLinkInfo(BaseModel):
@@ -189,6 +193,10 @@ class NodeGroupDetailResult(BaseModel):
     total_nodes: int = Field(description="Total number of nodes")
     total_links: int = Field(description="Total number of links")
 
+# Rebuild models to resolve forward references
+NodeInfo.model_rebuild()
+NodeLinkInfo.model_rebuild()
+NodeGroupDetailResult.model_rebuild()
 
 class OperatorPropertyInfo(BaseModel):
     """Information about an operator property."""
